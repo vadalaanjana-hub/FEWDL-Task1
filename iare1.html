@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SymptomSense — Self Assessment</title>
+  <style>
+    :root{
+      --lavender:#E6E6FA; /* light purple */
+      --deep-lav:#B39DDB;
+      --peach:#FFDAB9; /* interpreted 'leach' as warm peach */
+      --muted:#6b6b6b;
+      --card-bg:#ffffff;
+      --glass: rgba(255,255,255,0.6);
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; min-height:100vh; background: linear-gradient(180deg,var(--lavender) 0%, #F8F5FF 50%); color:#222;
+      display:flex; align-items:flex-start; justify-content:center; padding:32px;
+    }
+    .container{width:100%; max-width:1100px}
+    header{display:flex; align-items:center; gap:16px; margin-bottom:18px}
+    .brand{display:flex; gap:12px; align-items:center}
+    .logo{width:56px; height:56px; border-radius:12px; background:linear-gradient(135deg,var(--deep-lav), var(--peach)); display:flex; align-items:center; justify-content:center; color:white; font-weight:700}
+    h1{margin:0; font-size:20px}
+    p.lead{margin:0; color:var(--muted); font-size:13px}
+
+    .grid{display:grid; grid-template-columns: 1fr 420px; gap:18px}
+
+    /* Card */
+    .card{background:var(--card-bg); border-radius:14px; padding:18px; box-shadow:0 6px 20px rgba(64,44,96,0.08)}
+    label{font-size:13px; color:var(--muted)}
+    input[type=text], select, textarea{width:100%; padding:10px 12px; margin-top:8px; border-radius:8px; border:1px solid #eee}
+    .symptom-row{display:flex; gap:8px; margin-top:10px}
+    .symptom-row input{flex:1}
+    .severity{width:140px}
+    .btn{background:linear-gradient(90deg,var(--deep-lav), #9575CD); color:white; border:none; padding:10px 14px; border-radius:10px; cursor:pointer}
+    .btn.ghost{background:transparent; color:var(--deep-lav); border:1px dashed rgba(100,50,150,0.08)}
+
+    .history-list{max-height:300px; overflow:auto; margin-top:12px}
+    .history-item{padding:10px; border-radius:8px; background:linear-gradient(180deg, rgba(242,234,255,0.8), rgba(255,250,245,0.6)); margin-bottom:8px; font-size:13px}
+
+    .result{margin-top:12px; padding:12px; border-radius:10px; background:linear-gradient(180deg,var(--peach), #fff)}
+    .tags{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+    .tag{padding:6px 8px; border-radius:999px; background:var(--deep-lav); color:white; font-size:12px}
+
+    .footer{margin-top:12px; font-size:12px; color:var(--muted)}
+
+    /* Responsive */
+    @media (max-width:980px){
+      .grid{grid-template-columns:1fr;}
+      .card{padding:14px}
+    }
+
+    /* small helpers */
+    .muted{color:var(--muted); font-size:13px}
+    .flex{display:flex; gap:10px; align-items:center}
+    canvas{width:100%; height:160px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="logo">SS</div>
+        <div>
+          <h1>SymptomSense</h1>
+          <p class="lead">Preliminary self-assessment · Awareness & timely consultation</p>
+        </div>
+      </div>
+      <div style="margin-left:auto" class="muted">Offline demo • Data stored in browser</div>
+    </header>
+
+    <div class="grid">
+      <!-- Left: main interaction -->
+      <div>
+        <div class="card">
+          <h3>Describe your symptoms</h3>
+          <p class="muted">Type symptoms (e.g., cough, fever, headache). Add severity and a short note.</p>
+
+          <div style="margin-top:12px">
+            <label>Symptom</label>
+            <div class="symptom-row">
+              <input id="symptomInput" type="text" placeholder="e.g., cough" />
+              <select id="severity" class="severity">
+                <option value="mild">Mild</option>
+                <option value="moderate">Moderate</option>
+                <option value="severe">Severe</option>
+              </select>
+              <button id="addBtn" class="btn">Add</button>
+            </div>
+
+            <label style="margin-top:12px">Notes (optional)</label>
+            <textarea id="note" rows="2" placeholder="Any extra details... (duration, onset, meds)"></textarea>
+
+            <div style="display:flex; gap:8px; margin-top:12px">
+              <button id="assessBtn" class="btn">Assess</button>
+              <button id="clearBtn" class="btn ghost">Clear Current</button>
+            </div>
+
+            <div class="tags" id="currentTags" aria-live="polite"></div>
+          </div>
+
+          <div class="result" id="assessmentResult" aria-live="polite" style="display:none">
+            <strong>Possible conditions</strong>
+            <div id="conditionsList"></div>
+            <div style="margin-top:8px">
+              <strong>Recommendations</strong>
+              <div id="recommendations"></div>
+            </div>
+            <div style="margin-top:8px; font-size:12px" class="muted">Remember: this tool is for informational purposes only and is NOT a medical diagnosis.</div>
+          </div>
+
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3>Symptom trends</h3>
+          <p class="muted">A quick visualization of how often you reported symptoms.</p>
+          <canvas id="trendCanvas"></canvas>
+          <div class="footer">Tip: add symptoms with dates to track changes over time.</div>
+        </div>
+      </div>
+
+      <!-- Right: history & dashboard -->
+      <aside>
+        <div class="card">
+          <h3>History</h3>
+          <p class="muted">Saved symptom entries (localStorage)</p>
+          <div class="history-list" id="historyList"></div>
+          <div style="display:flex; gap:8px; margin-top:10px">
+            <button id="exportBtn" class="btn ghost">Export JSON</button>
+            <button id="clearHistory" class="btn" style="background:#FF8A65">Clear History</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3>Quick resources</h3>
+          <ul style="padding-left:18px; margin:6px 0;">
+            <li><a href="https://www.who.int/" target="_blank">World Health Organization</a></li>
+            <li><a href="https://www.cdc.gov/" target="_blank">CDC</a></li>
+            <li><a href="https://www.nhs.uk/" target="_blank">NHS</a></li>
+          </ul>
+          <div class="muted">If symptoms are severe (shortness of breath, chest pain, fainting), seek emergency care immediately.</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    // Simple client-side logic for SymptomSense demo
+    const symptomInput = document.getElementById('symptomInput');
+    const addBtn = document.getElementById('addBtn');
+    const currentTags = document.getElementById('currentTags');
+    const assessBtn = document.getElementById('assessBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const severity = document.getElementById('severity');
+    const note = document.getElementById('note');
+    const assessmentResult = document.getElementById('assessmentResult');
+    const conditionsList = document.getElementById('conditionsList');
+    const recommendations = document.getElementById('recommendations');
+    const historyList = document.getElementById('historyList');
+    const exportBtn = document.getElementById('exportBtn');
+    const clearHistory = document.getElementById('clearHistory');
+
+    let currentSymptoms = [];
+
+    // Example symptom -> condition mapping (simplified). In real apps use validated clinical data.
+    const conditionRules = [
+      {conds:['fever','cough','fatigue'], name:'Flu-like illness', urgency:'moderate', rec:'Rest, hydrate, consult primary care if persists >48 hrs or worsens.'},
+      {conds:['fever','cough','shortness of breath'], name:'Possible respiratory infection (seek medical advice)', urgency:'high', rec:'If shortness of breath or high fever, seek urgent care.'},
+      {conds:['headache','stiff neck','fever'], name:'Possible meningitis (rare)', urgency:'high', rec:'Seek emergency care if severe headache with neck stiffness.'},
+      {conds:['sore throat','fever','swollen glands'], name:'Tonsillitis / Strep throat', urgency:'moderate', rec:'See GP for testing if severe or persistent.'},
+      {conds:['runny nose','sneezing','itchy eyes'], name:'Allergic rhinitis', urgency:'low', rec:'Consider antihistamines; avoid triggers.'},
+      {conds:['chest pain','shortness of breath'], name:'Possible cardiac or pulmonary emergency', urgency:'critical', rec:'Call emergency services immediately.'}
+    ];
+
+    // Utility: normalize symptom text
+    function norm(s){ return s.trim().toLowerCase(); }
+
+    function renderTags(){
+      currentTags.innerHTML = '';
+      currentSymptoms.forEach((s, idx) => {
+        const t = document.createElement('div');
+        t.className = 'tag';
+        t.textContent = s.symptom + (s.severity? ' ('+s.severity+')':'');
+        t.style.cursor='pointer';
+        t.title = s.note||'';
+        t.onclick = ()=>{ currentSymptoms.splice(idx,1); renderTags(); };
+        currentTags.appendChild(t);
+      });
+    }
+
+    addBtn.addEventListener('click', ()=>{
+      const val = norm(symptomInput.value);
+      if(!val) return; // ignore empty
+      currentSymptoms.push({symptom:val, severity:severity.value, note:note.value, date:new Date().toISOString()});
+      symptomInput.value=''; note.value=''; renderTags();
+    });
+
+    clearBtn.addEventListener('click', ()=>{ currentSymptoms = []; renderTags(); assessmentResult.style.display='none'; });
+
+    assessBtn.addEventListener('click', ()=>{
+      if(currentSymptoms.length===0){ alert('Add at least one symptom to assess.'); return; }
+      // derive condition matches
+      const keys = currentSymptoms.map(s=>s.symptom);
+      const found = [];
+      conditionRules.forEach(rule=>{
+        const matchCount = rule.conds.filter(c=> keys.includes(c)).length;
+        // heuristic: at least 2 matches or contains a high-urgency symptom
+        if(matchCount>=2 || rule.conds.some(c=> keys.includes(c) && rule.urgency==='critical')){
+          found.push(Object.assign({},rule,{matchCount}));
+        }
+      });
+
+      // generic suggestions if nothing matched
+      if(found.length===0){
+        found.push({name:'Non-specific symptoms', urgency:'low', rec:'Monitor symptoms. See a clinician if symptoms persist or worsen.'});
+      }
+
+      // Display
+      conditionsList.innerHTML=''; recommendations.innerHTML='';
+      found.sort((a,b)=> b.matchCount - a.matchCount ).forEach(f=>{
+        const d = document.createElement('div');
+        d.style.marginTop='8px';
+        d.innerHTML = `<div style="font-weight:700">${f.name}</div><div class="muted">Urgency: ${f.urgency}</div>`;
+        conditionsList.appendChild(d);
+
+        const r = document.createElement('div'); r.style.marginTop='6px'; r.textContent = f.rec || '';
+        recommendations.appendChild(r);
+      });
+
+      // Save to history
+      const entry = {id:Date.now(), symptoms:currentSymptoms.slice(), conditions:found, created:new Date().toISOString() };
+      saveEntry(entry);
+
+      assessmentResult.style.display='block';
+      currentSymptoms = []; renderTags();
+      renderHistory();
+      drawTrends();
+    });
+
+    // History persistence
+    function getHistory(){
+      try{ return JSON.parse(localStorage.getItem('symptoms_history')||'[]'); } catch(e){ return []; }
+    }
+    function saveEntry(e){
+      const arr = getHistory(); arr.unshift(e); // newest first
+      localStorage.setItem('symptoms_history', JSON.stringify(arr.slice(0,200)));
+    }
+    function clearAllHistory(){ localStorage.removeItem('symptoms_history'); renderHistory(); drawTrends(); }
+
+    function renderHistory(){
+      const arr = getHistory(); historyList.innerHTML='';
+      if(arr.length===0){ historyList.innerHTML='<div class="muted">No entries yet.</div>'; return; }
+      arr.forEach(item=>{
+        const el = document.createElement('div'); el.className='history-item';
+        const date = new Date(item.created).toLocaleString();
+        el.innerHTML = `<div style="display:flex; justify-content:space-between; gap:8px"><div><strong>${item.conditions[0]?.name || 'Assessment'}</strong><div class="muted" style="font-size:12px">${date}</div></div><div style="text-align:right; font-size:12px"><button class='btn ghost' data-id='${item.id}'>View</button></div></div>`;
+        const details = document.createElement('div'); details.style.marginTop='8px'; details.style.fontSize='13px';
+        details.innerHTML = `<div class='muted'>Symptoms:</div> ${item.symptoms.map(s=> `<div style='display:inline-block; margin:6px 6px 0 0; padding:6px 8px; background:#F3E8FF; border-radius:8px'>${s.symptom} (${s.severity})</div>`).join('')}`;
+        el.appendChild(details);
+        historyList.appendChild(el);
+      });
+      // attach view handlers
+      historyList.querySelectorAll('button[data-id]').forEach(b=> b.addEventListener('click',(ev)=>{
+        const id = Number(ev.target.getAttribute('data-id'));
+        const found = getHistory().find(x=>x.id===id);
+        if(found){
+          // open a quick modal-like display using alert (simple)
+          const lines = [];
+          lines.push('Assessment: '+ (found.conditions.map(c=>c.name).join('; ')) );
+          lines.push('Symptoms: '+ found.symptoms.map(s=> s.symptom+'('+s.severity+')').join(', '));
+          lines.push('Date: '+ new Date(found.created).toLocaleString());
+          alert(lines.join('\n'));
+        }
+      }));
+    }
+
+    exportBtn.addEventListener('click', ()=>{
+      const data = JSON.stringify(getHistory(), null, 2);
+      // create downloadable file
+      const blob = new Blob([data], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'symptoms_history.json'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    clearHistory.addEventListener('click', ()=>{
+      if(confirm('Clear all saved history?')){ clearAllHistory(); }
+    });
+
+    // Simple trends chart: counts of most reported symptoms over time
+    const canvas = document.getElementById('trendCanvas');
+    function drawTrends(){
+      const ctx = canvas.getContext('2d');
+      // resize canvas to css size
+      canvas.width = canvas.clientWidth * devicePixelRatio;
+      canvas.height = canvas.clientHeight * devicePixelRatio;
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+      // gather data
+      const arr = getHistory();
+      const counts = {};
+      arr.forEach(entry=> entry.symptoms.forEach(s=> counts[s.symptom] = (counts[s.symptom]||0) + 1));
+      const items = Object.entries(counts).sort((a,b)=> b[1]-a[1]).slice(0,6);
+      // clear
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.font = '12px sans-serif';
+      ctx.fillStyle = '#333';
+      ctx.fillText('Top reported symptoms', 8, 18);
+      if(items.length===0){ ctx.fillStyle='#666'; ctx.fillText('No data yet', 10, 50); return; }
+      const chartTop = 30; const chartLeft = 10; const chartW = canvas.clientWidth - 20; const barH = 18; const gap = 12;
+      const max = Math.max(...items.map(i=>i[1]));
+      items.forEach((it,i)=>{
+        const y = chartTop + i*(barH+gap);
+        const w = (it[1]/max) * (chartW*0.7);
+        // bar
+        ctx.fillStyle = 'rgba(179,157,219,0.9)';
+        ctx.fillRect(chartLeft, y, w, barH);
+        // label
+        ctx.fillStyle = '#222';
+        ctx.fillText(it[0], chartLeft + w + 8, y + 12);
+        ctx.fillStyle = '#222';
+        ctx.fillText(String(it[1]), chartLeft + w - 28, y + 12);
+      });
+    }
+
+    // initial render
+    renderHistory(); drawTrends();
+
+    // ensure canvas redraw on resize
+    window.addEventListener('resize', ()=>{ drawTrends(); });
+
+    // Accessibility: Enter to add
+    symptomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ addBtn.click(); } });
+
+  </script>
+</body>
+</html>
